@@ -1,0 +1,317 @@
+
+import Tkinter as tk
+import time
+import threading
+import Queue
+from HamsterAPI.comm_usb import RobotComm
+
+gMaxRobotNum = 1 # max number of robots to control
+gRobotList = None
+gQuit = False
+
+orientation = "f"
+
+def movement(command):
+	global orientation
+	if (len(gRobotList) > 0):
+		robot = gRobotList[0]
+		if ((command == 'f' and orientation == "f") or (command == 'l' and orientation == "l") or (command == 'd' and orientation == "d") or (command == 'r' and orientation == "r")):
+			robot.set_wheel(0, 20) 
+			robot.set_wheel(1, 20)
+			time.sleep(1)     
+			print "Forward"
+
+		if ((command == 'f' and orientation == "l") or (command == 'l' and orientation == "d") or (command == 'd' and orientation == "r") or (command == 'r' and orientation == "f")):
+			robot.set_wheel(0, 20) 
+			robot.set_wheel(1,20)
+			time.sleep(.3)
+			robot.set_wheel(0, -23) 
+			robot.set_wheel(1, 23)
+			time.sleep(1)
+			print "turn left"
+
+		if ((command == 'f' and orientation == "r") or (command == 'l' and orientation == "f") or (command == 'd' and orientation == "l") or (command == 'r' and orientation == "d")): 
+			robot.set_wheel(0, 20) 
+			robot.set_wheel(1,20)
+			time.sleep(.3)
+			robot.set_wheel(0, 21) 
+			robot.set_wheel(1, -21)
+			time.sleep(1)
+			print "turn right"
+
+		if command == 's':
+			robot.set_wheel(0, 0) 
+			robot.set_wheel(1,0)
+			time.sleep(1)
+			print "stop"
+			exitProg()
+
+	orientation = command
+	
+
+def behavior_p_controller(path):
+	kp = .5 
+	floor_mid = 50
+	S_t = 30 # wheel speed
+	T_r = 50 # turning radius - smaller will track close to curve, but oscillate 
+	b2 = 20 # half distance between two wheels in mm
+
+	counter = 0
+
+
+	while not gQuit:
+		if (len(gRobotList) > 0):
+			if (gState == "P" and counter < len(path)):
+				robot = gRobotList[0]
+				floor_l = robot.get_floor(0)
+				floor_r = robot.get_floor(1)
+				sensor_diff = floor_l - floor_r
+				#print "floor l, r", floor_l, floor_r, sensor_diff
+				#print "floor", floor_r
+				#error = floor_mid - floor_r
+				#s_l = S_t*(T_r-error)/(T_r+error)
+				#s_r = S_t*(T_r+error)/(T_r-error)
+				s_l = S_t + sensor_diff*kp
+				s_r = S_t - sensor_diff*kp
+			  
+				if (floor_l < 30 and floor_r < 30):
+					print len(path),counter
+					if ((path[counter][0] > path[counter + 1][0]) and (path[counter][1:] == path[counter + 1][1:])):
+						movement("f")
+						print "F"
+						counter+=1
+					elif ((path[counter][0] == path[counter + 1][0]) and (path[counter][1:] < path[counter + 1][1:])):
+						movement("l")
+						counter += 1
+						print "B"
+					elif ((path[counter][0] == path[counter + 1][0]) and (path[counter][1:] > path[counter + 1][1:])):
+						movement("r")
+						counter += 1
+						print "C"
+					elif ((path[counter][0] == 2) and (path[counter][1:] == 2):
+						movement("s")
+						counter += 1
+						print "S"
+					#elif ((path[counter][0] < path[counter + 1][0]) and (path[counter][1:] == path[counter + 1][1:])):
+						#movement("d")
+						#counter += 1
+						#print "D"
+
+				else:
+					robot.set_wheel (0, int (s_l))
+					robot.set_wheel (1, int (s_r))
+				time.sleep(0.05)     
+
+	print "stop the robot"
+
+'''
+def pathfind(self, list):
+	kp = .5 
+	floor_mid = 50
+	S_t = 30 # wheel speed
+	T_r = 50 # turning radius - smaller will track close to curve, but oscillate 
+	b2 = 20 # half distance between two wheels in mm
+
+	while not gQuit:
+		if (len(gRobotList) > 0):
+			robot = gRobotList[0]
+			floor_l = robot.get_floor(0)
+			floor_r = robot.get_floor(1)
+			sensor_diff = floor_l - floor_r
+			print "floor l, r", floor_l, floor_r, sensor_diff
+			#print "floor", floor_r
+			#error = floor_mid - floor_r
+			#s_l = S_t*(T_r-error)/(T_r+error)
+			#s_r = S_t*(T_r+error)/(T_r-error)
+			s_l = S_t + sensor_diff*kp
+			s_r = S_t - sensor_diff*kp
+
+			if (floor_l < 30 and floor_r < 30):
+
+				robot.set_wheel(0, 20) 
+				robot.set_wheel(1,-20)
+				time.sleep(1)
+
+				robot.set_wheel(0, int(s_l)) 
+				robot.set_wheel(1,int(s_r))
+				time.sleep(0.05)     
+				time.sleep(0.01)
+			else:
+				robot.set_wheel(0, 60) 
+				robot.set_wheel(1,60)
+				time.sleep(1)
+
+				robot.set_wheel(0, int(s_l)) 
+				robot.set_wheel(1,int(s_r))
+				time.sleep(0.05)     
+				time.sleep(0.01)
+'''
+
+def P_controller(event=None):
+	global gState
+	gState = "P"
+
+def exitProg(event=None):
+	frame.quit()
+	print "Exit"
+
+class Node:
+	def __init__(self):
+	 self.name = ''
+	 self.data =[]
+	 #self.f_cost = 0
+	 #self.h_cost = 0
+	 self.back_pointer = False
+	 self.closed = False
+	 self.edges = []
+
+class Graph:
+	def __init__(self, canvas):
+		self.nodes = {}
+		self.startNode = None
+		self.goalNode = None
+		self.path = []
+		#self.path_cost = False
+		self.queue = Queue.Queue()
+		#self.lifo_queue = Queue.LifoQueue()
+		#self.priority_queue = Queue.PriorityQueue()
+		self.canvas = canvas
+		self.node_dist = 60
+		self.node_size = 20
+
+	def draw_node(self, a_node, n_color):
+		if a_node.data: # coordinate to draw
+		 x = a_node.data[0]
+		 y = a_node.data[1]
+		 canvas = self.canvas
+		 dist = self.node_dist
+		 size = self.node_size
+		 canvas.create_oval(x*dist-size, y*dist-size, x*dist+size, y*dist+size, fill=n_color)
+		 canvas.create_text(x*dist, y*dist,fill="white",text=a_node.name)
+
+	def draw_edge(self, node1, node2, e_color):
+	 if (node1.data and node2.data):
+		 x1 = node1.data[0]
+		 y1 = node1.data[1]
+		 x2 = node2.data[0]
+		 y2 = node2.data[1]
+		 dist = self.node_dist
+		 canvas = self.canvas
+		 canvas.create_line(x1*dist, y1*dist, x2*dist, y2*dist, fill=e_color)
+
+	def add_node(self, name, data):
+		a_node = Node()
+		a_node.name = name
+		a_node.data = data
+		self.nodes[name] = a_node
+		self.draw_node(a_node, "blue")
+		return a_node
+
+	def set_start(self, name):
+		self.startNode = name
+		self.draw_node(self.nodes[name], "red")
+		self.nodes[name].f_cost = 0
+		self.queue.put(self.nodes[name])
+
+	def set_goal(self, name):
+		self.goalNode = name
+		self.draw_node(self.nodes[name], "green")
+
+	def add_edge(self, node1, node2, g_cost):
+		self.nodes[node1].edges.append([node2, g_cost])
+		self.nodes[node2].edges.append([node1, g_cost])
+		self.draw_edge(self.nodes[node1], self.nodes[node2], "blue")
+
+	def BFS(self): # Breadth First Search
+	 print "Breadth First Search"
+	 while not self.queue.empty():
+		current_node = self.queue.get()
+		if (current_node.closed != True):
+		 print "expand current node: ", current_node.name
+		 print "edges from node: ",current_node.edges
+		 for an_edge in current_node.edges:
+			a_node_name = an_edge[0]
+			if not self.nodes[a_node_name].closed: #has been "expanded"
+			 self.queue.put(self.nodes[a_node_name])
+			 print "put queue: ", a_node_name
+			 self.nodes[a_node_name].back_pointer = current_node
+
+			 # check if path to goal is found, if so, extract path
+			 if a_node_name == self.goalNode:
+				print "found path to ", a_node_name
+				path = [a_node_name]
+				#path_cost = 0
+				path_node = self.nodes[a_node_name]
+				while path_node.back_pointer != False:
+				 self.draw_edge(path_node, path_node.back_pointer, "yellow")
+				 path_node = path_node.back_pointer
+				 path.append(path_node.name)
+
+				if not self.path:
+				 self.path = path
+				 self.path.reverse()
+				 print "path: ", self.path
+			else:
+			 print "node closed: ", a_node_name
+		current_node.closed = True
+
+def main():
+
+	global gMaxRobotNum
+	global frame
+	global gRobotList
+	global gQuit
+	global gState
+
+	comm = RobotComm(gMaxRobotNum)
+	comm.start()
+
+	print 'Bluetooth starts'
+	gRobotList = comm.robotList
+
+	gQuit = False
+	gState = False
+
+	frame = tk.Tk()
+
+	button3 = tk.Button(frame,text="P")
+	button3.pack(side='left')
+	button3.bind('<Button-1>', P_controller)  
+
+	canvas = tk.Canvas(frame, bg="white", width=600, height=600)
+	canvas.pack(expand=1, fill='both')
+
+	print "created graph"
+	MyGraph = Graph(canvas)
+
+	for y in range (3):#rows
+		for x in range (3):#column
+			MyGraph.add_node(str(y)+str(x), [x+1,y+1])
+			if ((y-1) > -1):
+				MyGraph.add_edge((str(y) + str(x)), (str(y - 1) + str(x)), 1)
+			if ((x-1) > -1):
+				MyGraph.add_edge((str(y) + str(x)), (str(y) + str(x- 1)), 1)
+
+
+	MyGraph.set_start("00")
+	MyGraph.set_goal("22")
+   
+	MyGraph.BFS()
+	gottenPath = MyGraph.path
+
+	behavior_thread3 = threading.Thread(target=behavior_p_controller, args = (gottenPath,))
+	behavior_thread3.daemon = True
+	behavior_thread3.start()  
+
+	frame.mainloop()
+
+
+	time.sleep(1.0)
+	comm.stop()
+	comm.join()
+	print("terminated!")
+	gQuit = True
+
+
+if __name__ == "__main__":
+	main()
