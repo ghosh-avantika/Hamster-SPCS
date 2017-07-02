@@ -1,0 +1,27 @@
+
+def behavior_p_controller():
+    S_t = 80 #Wheel speed
+    K_p = 1  #Turning radius - smaller will track close to curve, but oscillate 
+    
+    while not gQuit:
+        low_range = 25
+        high_range = 75
+        if (len(gRobotList) > 0):
+            if (gState == "P"):
+                robot = gRobotList[0]
+                floor_l = robot.get_floor(0)
+                floor_r = robot.get_floor(1)
+                sensor_diff = floor_l - floor_r
+                print "floor l, r", floor_l, floor_r, sensor_diff
+                s_l = S_t + T_r
+                s_r = S_t - T_r
+                robot.set_wheel(0, int(s_l))
+                robot.set_wheel(1, int(s_r))
+                time.sleep(0.01)
+                if (sensor_diff == 0 and floor_r <30):
+                    robot.set_wheel(0,0)
+                    robot.set_wheel(1,0)
+                
+                print (s_l, s_r)
+
+    print "stop the robot"
